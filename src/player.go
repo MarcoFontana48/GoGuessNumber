@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	//"github.com/rabbitmq/amqp091-go"
 	"math/rand"
 	"sync"
 )

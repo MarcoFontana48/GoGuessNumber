@@ -1,5 +1,9 @@
 package main
 
+//import (
+//	"github.com/rabbitmq/amqp091-go"
+//)
+
 const (
 	MAX = 100 // Max secret number
 	N   = 10  // Number of players
