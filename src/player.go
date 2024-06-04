@@ -2,47 +2,61 @@ package main
 
 import (
 	"fmt"
-	//"github.com/rabbitmq/amqp091-go"
 	"math/rand"
+	"sync"
 )
 
 type Player struct {
-	playerId        int
-	minGuessableNum int
-	maxGuessableNum int
+	id          int
+	maxNumBound int
+	minNumBound int
 }
 
 func NewPlayer(id int) *Player {
-	return &Player{playerId: id, minGuessableNum: 0, maxGuessableNum: MAX}
+	return &Player{id: id, maxNumBound: MAX, minNumBound: 0}
 }
 
-func (p *Player) start(guessChan chan<- *Guess, adviceChan <-chan string) {
-	p.guess(guessChan, adviceChan)
-}
+func (p *Player) start(startChan <-chan bool, guessChan chan<- int, resultChan <-chan string, adviceChan <-chan string, winChan <-chan string, wg *sync.WaitGroup, winWg *sync.WaitGroup) {
+	wg.Done()
 
-func (p *Player) guess(guessChan chan<- *Guess, adviceChan <-chan string) {
-	guessNum := rand.Intn(p.maxGuessableNum-p.minGuessableNum+1) + p.minGuessableNum
-	fmt.Printf("PLAYER %d: Initial guess: '%d'\n", p.playerId, guessNum)
-	guessChan <- &Guess{playerId: p.playerId, number: guessNum}
+	winWg.Add(1)
+	go func() {
+		defer winWg.Done()
+		playerResult := <-winChan
+		fmt.Printf("PLAYER %d: received %s message\n", p.id, playerResult)
+	}()
 
-	for advice := range adviceChan {
-		if advice == "CORRECT" {
-			fmt.Printf("PLAYER %d: I guessed '%d' and it is correct!\n", p.playerId, guessNum)
-			break
-		} else if advice == "HIGHER" {
-			p.SetMinGuessableNum(guessNum + 1)
-		} else {
-			p.SetMaxGuessableNum(guessNum - 1)
+	for {
+		// wait for the turn to start
+		fmt.Printf("PLAYER %d: is waiting for the turn to start\n", p.id)
+		<-startChan
+		fmt.Printf("PLAYER %d: received start turn message\n", p.id)
+
+		// guess a number
+		guess := rand.Intn(p.maxNumBound-p.minNumBound) + p.minNumBound
+		fmt.Printf("PLAYER %d: guessed %d\n", p.id, guess)
+		guessChan <- guess
+
+		// receive result
+		result := <-resultChan
+		fmt.Printf("PLAYER %d: received result %s\n", p.id, result)
+
+		if result == "correct" {
+			fmt.Printf("PLAYER %d: guessed the secret number\n", p.id)
+		} else if result == "incorrect" {
+			// receive advice
+			advice := <-adviceChan
+			fmt.Printf("PLAYER %d: received advice %s\n", p.id, advice)
+
+			if advice == "higher" {
+				p.minNumBound = guess + 1
+				fmt.Printf("PLAYER %d: setting minNumBound to %d\n", p.id, p.minNumBound)
+			} else {
+				p.maxNumBound = guess
+				fmt.Printf("PLAYER %d: setting maxNumBound to %d\n", p.id, p.maxNumBound)
+			}
 		}
+
+		wg.Done()
 	}
-}
-
-func (p *Player) SetMinGuessableNum(newMin int) {
-	p.minGuessableNum = newMin
-	fmt.Printf("PLAYER %d: set new minimum bound to %d\n", p.playerId, p.minGuessableNum)
-}
-
-func (p *Player) SetMaxGuessableNum(newMax int) {
-	p.maxGuessableNum = newMax
-	fmt.Printf("PLAYER %d: set new maximum bound to %d\n", p.playerId, p.maxGuessableNum)
 }

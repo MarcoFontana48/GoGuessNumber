@@ -5,10 +5,17 @@ package main
 //)
 
 const (
-	MAX = 100 // Max secret number
-	N   = 6   // Number of players
-	//MAX = 100_000 	// Max secret number
-	//N   = 10_000  	// Number of players
+	//there has to be only a single winner (even if multiple guessed correctly) and it has to be the player whom the oracle received the correct secret number first
+	//MAX = 0 			// Max secret number
+	//N   = 3 			// Number of players
+
+	//message order has to be evaluated correctly
+	MAX = 25 // Max secret number
+	N   = 5  // Number of players
+
+	//massive
+	//MAX = 1000 // Max secret number
+	//N   = 1000 // Number of players
 )
 
 func main() {

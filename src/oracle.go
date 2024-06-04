@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	//"github.com/rabbitmq/amqp091-go"
 	"math/rand"
+	"sync"
 )
 
 type Oracle struct {
@@ -15,47 +15,103 @@ func NewOracle() *Oracle {
 }
 
 func (o *Oracle) start() {
-	fmt.Printf("ORACLE: secret number is '%d'\n", o.secretNumber)
+	fmt.Println("ORACLE: the secret number is ", o.secretNumber)
 
-	// creates channels of size 'N' (N == number of players) to receive their guesses
-	guessChan := make(chan *Guess, N)
+	// initialize channels
+	startChan := make(map[int]chan bool)
+	guessChan := make(map[int]chan int)
 	adviceChan := make(map[int]chan string)
+	resultChan := make(map[int]chan string)
+	winChan := make(map[int]chan string)
 
-	o.startGame(guessChan, adviceChan)
-}
+	var oracleWaitGroup sync.WaitGroup
+	oracleWaitGroup.Add(N)
 
-func (o *Oracle) startGame(guessChan chan *Guess, adviceChan map[int]chan string) {
-	o.startPlayers(guessChan, adviceChan)
+	var winWaitGroup sync.WaitGroup
+
+	for i := 0; i < N; i++ {
+		// initialize the individual channels in the map
+		startChan[i] = make(chan bool)
+		guessChan[i] = make(chan int)
+		adviceChan[i] = make(chan string)
+		resultChan[i] = make(chan string)
+		winChan[i] = make(chan string)
+
+		// creates a new player
+		player := NewPlayer(i)
+
+		// starts the player
+		go player.start(startChan[i], guessChan[i], resultChan[i], adviceChan[i], winChan[i], &oracleWaitGroup, &winWaitGroup)
+	}
+
+	oracleWaitGroup.Wait()
+	winner := -1
 
 	for {
-		fmt.Println("ORACLE: a new turn starts.")
+		oracleWaitGroup.Add(N)
 
-		if o.checkGuessedNumbers(guessChan, adviceChan) {
-			fmt.Println("ORACLE: someone guessed the right number, game over.")
+		// starts the game
+		fmt.Printf("ORACLE: turn starts\n")
+		for i := 0; i < N; i++ {
+			// signals the players to start
+			go func() {
+				startChan[i] <- true
+			}()
+		}
+
+		var playersWaitGroup sync.WaitGroup
+		playersWaitGroup.Add(N)
+
+		for i := 0; i < N; i++ {
+			go func(i int) {
+				defer playersWaitGroup.Done()
+
+				// receives guesses from players
+				guess := <-guessChan[i]
+				fmt.Printf("ORACLE: received guess %d from %d\n", guess, i)
+
+				// sends advice to the player
+				if guess == o.secretNumber {
+					fmt.Printf("ORACLE: player %d guessed the secret number (%d)\n", i, guess)
+					resultChan[i] <- "correct"
+					if winner == -1 {
+						winner = i
+					}
+				} else {
+					fmt.Printf("ORACLE: player %d guessed incorrectly (%d)\n", i, guess)
+					resultChan[i] <- "incorrect"
+					if guess < o.secretNumber {
+						fmt.Printf("ORACLE: player %d should guess higher\n", i)
+						adviceChan[i] <- "higher"
+					} else {
+						fmt.Printf("ORACLE: player %d should guess lower\n", i)
+						adviceChan[i] <- "lower"
+					}
+				}
+			}(i)
+		}
+
+		// wait for all players to finish
+		playersWaitGroup.Wait()
+		fmt.Printf("ORACLE: turn ends\n")
+
+		if winner > -1 {
 			break
 		}
-
-		fmt.Println("ORACLE: no one guessed the right number, a new turn starts.")
 	}
-}
 
-func (o *Oracle) startPlayers(guessChan chan *Guess, adviceChan map[int]chan string) {
 	for i := 0; i < N; i++ {
-		adviceChan[i] = make(chan string)
-		go NewPlayer(i).start(guessChan, adviceChan[i])
+		// signals the players who won and who lost
+		go func() {
+			if i == winner {
+				winChan[i] <- "won"
+			} else {
+				winChan[i] <- "lost"
+			}
+		}()
 	}
-}
 
-func (o *Oracle) checkGuessedNumbers(guessChan <-chan *Guess, adviceChan map[int]chan string) bool {
-	for guess := range guessChan {
-		if guess.number == o.secretNumber {
-			adviceChan[guess.playerId] <- "CORRECT"
-			return true
-		} else if guess.number < o.secretNumber {
-			adviceChan[guess.playerId] <- "HIGHER"
-		} else {
-			adviceChan[guess.playerId] <- "LOWER"
-		}
-	}
-	return false
+	winWaitGroup.Wait()
+
+	fmt.Println("ORACLE: game over")
 }
