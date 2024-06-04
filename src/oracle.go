@@ -4,7 +4,6 @@ import (
 	"fmt"
 	//"github.com/rabbitmq/amqp091-go"
 	"math/rand"
-	"sync"
 )
 
 type Oracle struct {
@@ -18,55 +17,45 @@ func NewOracle() *Oracle {
 func (o *Oracle) start() {
 	fmt.Printf("ORACLE: secret number is '%d'\n", o.secretNumber)
 
-	// creates a channel of 'Players' to receive their guesses
-	guesses := make(chan *Player)
+	// creates channels of size 'N' (N == number of players) to receive their guesses
+	guessChan := make(chan *Guess, N)
+	adviceChan := make(map[int]chan string)
 
-	// creates a WaitGroup to wait for all players to finish their guesses
-	var wg sync.WaitGroup
+	o.startGame(guessChan, adviceChan)
+}
 
-	// starts the game
+func (o *Oracle) startGame(guessChan chan *Guess, adviceChan map[int]chan string) {
+	o.startPlayers(guessChan, adviceChan)
+
 	for {
 		fmt.Println("ORACLE: a new turn starts.")
 
-		wg.Add(N)
-
-		// creates N players (workers) and starts their guesses
-		for i := 0; i < N; i++ {
-			go NewPlayer(i+1).guess(guesses, &wg)
-		}
-
-		// closes the channel when all players have finished their guesses
-		go func() {
-			wg.Wait()
-			close(guesses)
-		}()
-
-		winner := false
-		for guess := range guesses {
-			// checks if the player has guessed the secret number
-			if o.guessNumber(guess) {
-				fmt.Printf("ORACLE: player %d guessed the number correctly! The number was %d.\n", guess.playerId, o.secretNumber)
-				winner = true
-				break
-			}
-		}
-
-		if winner {
+		if o.checkGuessedNumbers(guessChan, adviceChan) {
+			fmt.Println("ORACLE: someone guessed the right number, game over.")
 			break
-		} else {
-			fmt.Println("ORACLE: no one guessed the number correctly.")
-			guesses = make(chan *Player)
 		}
+
+		fmt.Println("ORACLE: no one guessed the right number, a new turn starts.")
 	}
 }
 
-func (o *Oracle) guessNumber(p *Player) bool {
-	if p.guessedNum < o.secretNumber {
-		fmt.Printf("ORACLE: player %d the secret number is greater than %d\n", p.playerId, p.guessedNum)
-		p.SetMinGuessableNum(p.guessedNum + 1)
-	} else if p.guessedNum > o.secretNumber {
-		fmt.Printf("ORACLE: player %d the secret number is less than %d\n", p.playerId, p.guessedNum)
-		p.SetMaxGuessableNum(p.guessedNum - 1)
+func (o *Oracle) startPlayers(guessChan chan *Guess, adviceChan map[int]chan string) {
+	for i := 0; i < N; i++ {
+		adviceChan[i] = make(chan string)
+		go NewPlayer(i).start(guessChan, adviceChan[i])
 	}
-	return p.guessedNum == o.secretNumber
+}
+
+func (o *Oracle) checkGuessedNumbers(guessChan <-chan *Guess, adviceChan map[int]chan string) bool {
+	for guess := range guessChan {
+		if guess.number == o.secretNumber {
+			adviceChan[guess.playerId] <- "CORRECT"
+			return true
+		} else if guess.number < o.secretNumber {
+			adviceChan[guess.playerId] <- "HIGHER"
+		} else {
+			adviceChan[guess.playerId] <- "LOWER"
+		}
+	}
+	return false
 }

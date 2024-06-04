@@ -4,12 +4,10 @@ import (
 	"fmt"
 	//"github.com/rabbitmq/amqp091-go"
 	"math/rand"
-	"sync"
 )
 
 type Player struct {
 	playerId        int
-	guessedNum      int
 	minGuessableNum int
 	maxGuessableNum int
 }
@@ -18,13 +16,25 @@ func NewPlayer(id int) *Player {
 	return &Player{playerId: id, minGuessableNum: 0, maxGuessableNum: MAX}
 }
 
-func (p *Player) guess(guesses chan<- *Player, wg *sync.WaitGroup) {
-	// decrease the WaitGroup counter when the goroutine completes.
-	defer wg.Done()
+func (p *Player) start(guessChan chan<- *Guess, adviceChan <-chan string) {
+	p.guess(guessChan, adviceChan)
+}
 
-	p.guessedNum = rand.Intn(p.maxGuessableNum-p.minGuessableNum+1) + p.minGuessableNum
-	fmt.Printf("PLAYER %d: guessed %d\n", p.playerId, p.guessedNum)
-	guesses <- p
+func (p *Player) guess(guessChan chan<- *Guess, adviceChan <-chan string) {
+	guessNum := rand.Intn(p.maxGuessableNum-p.minGuessableNum+1) + p.minGuessableNum
+	fmt.Printf("PLAYER %d: Initial guess: '%d'\n", p.playerId, guessNum)
+	guessChan <- &Guess{playerId: p.playerId, number: guessNum}
+
+	for advice := range adviceChan {
+		if advice == "CORRECT" {
+			fmt.Printf("PLAYER %d: I guessed '%d' and it is correct!\n", p.playerId, guessNum)
+			break
+		} else if advice == "HIGHER" {
+			p.SetMinGuessableNum(guessNum + 1)
+		} else {
+			p.SetMaxGuessableNum(guessNum - 1)
+		}
+	}
 }
 
 func (p *Player) SetMinGuessableNum(newMin int) {

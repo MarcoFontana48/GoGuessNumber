@@ -6,7 +6,7 @@ package main
 
 const (
 	MAX = 100 // Max secret number
-	N   = 10  // Number of players
+	N   = 6   // Number of players
 	//MAX = 100_000 	// Max secret number
 	//N   = 10_000  	// Number of players
 )
