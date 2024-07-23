@@ -18,11 +18,11 @@ func (o *Oracle) start() {
 	fmt.Println("ORACLE: the secret number is ", o.secretNumber)
 
 	// initialize channels
-	startChan := make(map[int]chan bool)
-	guessChan := make(map[int]chan int)
-	adviceChan := make(map[int]chan string)
-	resultChan := make(map[int]chan string)
-	winChan := make(map[int]chan string)
+	startChan := make(map[int]chan bool)    //communicates when the game or turn starts
+	guessChan := make(map[int]chan int)     //communicates guesses from players
+	adviceChan := make(map[int]chan string) //oracle tells players suggestions based on guessed number
+	resultChan := make(map[int]chan string) //oracle tells players if they have correctly guessed the number
+	winChan := make(map[int]chan string)    //oracle tells to each player whether they have won or lost at the end of the game
 
 	var oracleWaitGroup sync.WaitGroup
 	oracleWaitGroup.Add(N)
@@ -44,8 +44,9 @@ func (o *Oracle) start() {
 		go player.start(startChan[i], guessChan[i], resultChan[i], adviceChan[i], winChan[i], &oracleWaitGroup, &winWaitGroup)
 	}
 
+	//oracle waits until all players have been initialized before proceeding
 	oracleWaitGroup.Wait()
-	winner := -1
+	winner := -1 //initialize winner player index
 
 	for {
 		oracleWaitGroup.Add(N)
@@ -63,35 +64,36 @@ func (o *Oracle) start() {
 		playersWaitGroup.Add(N)
 
 		for i := 0; i < N; i++ {
-			go func(i int) {
+			//defines an anonimous function with 'chanIndex' as argument. Sends suggestions to players based on their guesses
+			go func(playerIndex int) {
 				defer playersWaitGroup.Done()
 
 				// receives guesses from players
-				guess := <-guessChan[i]
-				fmt.Printf("ORACLE: received guess %d from %d\n", guess, i)
+				guess := <-guessChan[playerIndex]
+				fmt.Printf("ORACLE: received guess %d from %d\n", guess, playerIndex)
 
 				// sends advice to the player
 				if guess == o.secretNumber {
-					fmt.Printf("ORACLE: player %d guessed the secret number (%d)\n", i, guess)
-					resultChan[i] <- "correct"
+					fmt.Printf("ORACLE: player %d guessed the secret number (%d)\n", playerIndex, guess)
+					resultChan[playerIndex] <- "correct"
 					if winner == -1 {
-						winner = i
+						winner = playerIndex
 					}
 				} else {
-					fmt.Printf("ORACLE: player %d guessed incorrectly (%d)\n", i, guess)
-					resultChan[i] <- "incorrect"
+					fmt.Printf("ORACLE: player %d guessed incorrectly (%d)\n", playerIndex, guess)
+					resultChan[playerIndex] <- "incorrect"
 					if guess < o.secretNumber {
-						fmt.Printf("ORACLE: player %d should guess higher\n", i)
-						adviceChan[i] <- "higher"
+						fmt.Printf("ORACLE: player %d should guess higher\n", playerIndex)
+						adviceChan[playerIndex] <- "higher"
 					} else {
-						fmt.Printf("ORACLE: player %d should guess lower\n", i)
-						adviceChan[i] <- "lower"
+						fmt.Printf("ORACLE: player %d should guess lower\n", playerIndex)
+						adviceChan[playerIndex] <- "lower"
 					}
 				}
-			}(i)
+			}(i) //argument of the function
 		}
 
-		// wait for all players to finish
+		// wait for all players to receive the guesses
 		playersWaitGroup.Wait()
 		fmt.Printf("ORACLE: turn ends\n")
 
@@ -111,6 +113,7 @@ func (o *Oracle) start() {
 		}()
 	}
 
+	//waits until game has ended
 	winWaitGroup.Wait()
 
 	fmt.Println("ORACLE: game over")

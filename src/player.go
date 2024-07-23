@@ -16,9 +16,10 @@ func NewPlayer(id int) *Player {
 	return &Player{id: id, maxNumBound: MAX, minNumBound: 0}
 }
 
-func (p *Player) start(startChan <-chan bool, guessChan chan<- int, resultChan <-chan string, adviceChan <-chan string, winChan <-chan string, wg *sync.WaitGroup, winWg *sync.WaitGroup) {
-	wg.Done()
+func (p *Player) start(startChan <-chan bool, guessChan chan<- int, resultChan <-chan string, adviceChan <-chan string, winChan <-chan string, oracleWg *sync.WaitGroup, winWg *sync.WaitGroup) {
+	oracleWg.Done()
 
+	//function to receive 'won' or 'lost' message at the end of the game
 	winWg.Add(1)
 	go func() {
 		defer winWg.Done()
@@ -57,6 +58,6 @@ func (p *Player) start(startChan <-chan bool, guessChan chan<- int, resultChan <
 			}
 		}
 
-		wg.Done()
+		oracleWg.Done()
 	}
 }
